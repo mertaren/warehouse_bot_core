@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'security = warehouse_autonomy.security:main',
+            'security = warehouse_autonomy.security_patrol_node:main',
         ],
     },
 )
