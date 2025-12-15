@@ -22,5 +22,14 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+# Copy launch folder to share path
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+# Copy maps folder to share path
+install(DIRECTORY maps
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()
