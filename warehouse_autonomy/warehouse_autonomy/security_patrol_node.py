@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
-from copy import deepcopy
+import time
 
 
 class SecurityPatrolNode(Node):
@@ -17,14 +17,13 @@ class SecurityPatrolNode(Node):
         self.navigator.waitUntilNav2Active()
         self.get_logger().info('Nav2 activate. Starting patrol setup')
         
-        # Route ( Futue : We'll load this from YAML)
-        self.raw_route = [
-            [10.4, -0.66],
-            [20.2, -1.66],
-            [17.56, -7.32]
+        # Define Route (Hardcoded for now)
+        self.waypoints = [   
+            {'x': 1.45, 'y': 6.64},    # Point A
+            {'x': -3.50, 'y': -2.88},  # Point B
+            {'x': 5.63, 'y': 2.07}   # Point C
         ]
         
-        self.is_patrolling = False
         self.start_patrol()
         
     def start_patrol(self):
@@ -32,62 +31,50 @@ class SecurityPatrolNode(Node):
         Prepares  the poses and sends the goal to Nav2
 
         '''
-        route_poses = []
-        pose = PoseStamped()
-        pose.header.frame_id = 'map'
-        pose.header.stamp = self.navigator.get_clock().now().to_msg()
-        pose.pose.orientation.w = 1.0 # Facing foward
-        for pt in self.raw_route:
-            pose.pose.position.x = pt[0]
-            pose.pose.position.y = pt[1]
-            route_poses.append(deepcopy(pose))
-        
-        self.get_logger().info(f'Starting patrol with{len(route_poses)} waypoints')
-        
-        # Send goal
-        self.navigator.goThroughPoses(route_poses)
-        self.is_patrolling = True
-        
-        # Create timer because this allows the node to do other things
-        self.timer = self.create_timer(1.0, self.patrol_feedback_callback)
-        
-    def patrol_feedback_callback(self):
-        '''           
-         Periodic check of the navigation status
-        
-        '''
-        if not self.is_patrolling:
-            return
-        
-        if not self.navigator.isTaskComplete():
-            feedback = self.navigator.getFeedback()
-            return
-        
-        result = self.navigator.getResult()
-        
-        if result == TaskResult.SUCCEEDED:
-            self.get_logger().info('Route complete! Restarting...')
-            self.raw_route.revese()
-            self.start_patrol() # Loop behavior
+        while rclpy.ok():
+            for i, wp in enumerate(self.waypoints):
+                self.get_logger().info(f'++ Going to Waypoint {i+1}: x={wp["x"]}, y={wp["y"]}')
+                
+                # Create goal
+                goal_pose = PoseStamped()
+                goal_pose.header.frame_id = 'map'
+                goal_pose.header.stamp = self.navigator.get_clock().now().to_msg()
+                goal_pose.pose.position.x = wp['x']
+                goal_pose.pose.position.y = wp['y']
+                goal_pose.pose.orientation.w = 1.0 # face foward
+
+                # Go to first goal
+                self.navigator.goToPose(goal_pose)
+
+                # Wait until robot gets to the point
+                while not self.navigator.isTaskComplete():
+                    feedback = self.navigator.getFeedback()
+                    time.sleep(0.5)
+
+                result = self.navigator.getResult()
+                
+                if result == TaskResult.SUCCEEDED:
+                    self.get_logger().info(f'Waypoint {i+1} REACHED!')
+                    time.sleep(1.0) # Wait 1 sec
+                elif result == TaskResult.CANCELED:
+                    self.get_logger().warn('Task was canceled.')
+                    return
+                elif result == TaskResult.FAILED:
+                    self.get_logger().error(f'Failed to reach Waypoint {i+1}. Skipping...')
+                    
             
-        elif result == TaskResult.CANCELED:
-            self.get_logger().info('Security route was canceled') 
-            self.is_patrolling = False # Return to home
-        
-        elif result == TaskResult.FAILED:
-            self.get_logger().info('Navigation failed') 
-            self.is_patrolling = False
-            self.start_patrol
+            self.get_logger().info('Mission Passed')
             
 def main(args=None):
         rclpy.init(args=args)
+        node = SecurityPatrolNode()
         try:
-            node = SecurityPatrolNode()
             rclpy.spin(node) # For loop
         except KeyboardInterrupt:
             pass
         finally:
             # Destroy the node
+            node.destroy_node()
             rclpy.shutdown()
             
 if __name__ == '__main__':
