@@ -1,0 +1,5 @@
+security_patrol_node:
+  ros__parameters:
+    waypoint__x: [1.45, -3.50, 5.63]
+    waypoint__y: [6.64, -2.88, 2.07]
+    use_sim_time: true
