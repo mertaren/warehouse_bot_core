@@ -2,8 +2,13 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
-import time
+from enum import Enum
 
+# Defining states
+class PatrolState(Enum):
+    IDLE = 0 # On hold
+    NAVIGATING = 1 # On the move
+    SCANNING = 2 # Scanning
 
 class SecurityPatrolNode(Node):
     def __init__(self):
@@ -25,84 +30,98 @@ class SecurityPatrolNode(Node):
             self.waypoints = []
         else:
             self.waypoints = [{'x': x, 'y': y} for x, y in zip(wp_x, wp_y)]
-            self.get_logger().info(f'{len(self.waypoints)} waypoints from config.')
+            #self.get_logger().info(f'{len(self.waypoints)} waypoints from config.')
             
         self.navigator = BasicNavigator()
+        # self.setup_initial_pose() # Assume initial pose is already set by Rviz/Sim startup if needed remove the '#'
         
-        # AMCL
+        # State machine initialization
+        self.state = PatrolState.IDLE
+        self.current_wp_index = 0
+        
+        # Check every 0.5 sec
+        self.timer = self.create_timer(0.5, self.fms_loop)
+        self.get_logger().info('Patrol system ready...')
+        
+        # Starting navigation
+        self.start_navigation()
+
+    """
+    def setup_initial_pose(self):
         initial_pose = PoseStamped()
         initial_pose.header.frame_id = 'map'
         initial_pose.header.stamp = self.navigator.get_clock().now().to_msg()
-        initial_pose.pose.position.x = -5.689477920532227  
-        initial_pose.pose.position.y = 9.327399253845215 
-        initial_pose.pose.orientation.z = 0.006001472473144531
+        initial_pose.pose.position.x = -5.69 
+        initial_pose.pose.position.y = 9.32
+        initial_pose.pose.orientation.z = 0.006
         initial_pose.pose.orientation.w = 1.0 
         
-        
-        self.get_logger().info('Waiting for AMCL particle cloud')
-        while not self.navigator.initial_pose_pub.get_subscription_count() > 0:
-            self.get_logger().info('Waiting for AMCL node to subscribe to /initialpose topic')
-            time.sleep(1.0)
-        
         self.navigator.setInitialPose(initial_pose)
-        
-        # Nav Setup: Wait for Nav2 to be fully active
         self.navigator.waitUntilNav2Active()
-        self.get_logger().info('Nav2 activate. Starting patrol setup')
+    """
 
-        self.start_patrol()
+    def start_navigation(self):
+        '''
+        Runs every 0.5 seconds
+
+        '''
+        if self.current_wp_index >= len(self.waypoints):
+            self.get_logger().info('MISSION PASSED! Restarting Patrol...')
+            self.current_wp_index = 0 # Loop back to start
         
-    def start_patrol(self):
-        '''
-        Prepares  the poses and sends the goal to Nav2
+        wp = self.waypoints[self.current_wp_index]
+        self.get_logger().info(f'Moving to WP {self.current_wp_index + 1} ({wp["x"]}, {wp["y"]})')
+        
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = 'map'
+        goal_pose.header.stamp = self.navigator.get_clock().now().to_msg()
+        goal_pose.pose.position.x = wp['x']
+        goal_pose.pose.position.y = wp['y']
+        goal_pose.pose.orientation.w = 1.0 
 
-        '''
-        while rclpy.ok():
-            for i, wp in enumerate(self.waypoints):
-                self.get_logger().info(f'++ Going to Waypoint {i+1}: x={wp["x"]}, y={wp["y"]}')
-                
-                # Create goal
-                goal_pose = PoseStamped()
-                goal_pose.header.frame_id = 'map'
-                goal_pose.header.stamp = self.navigator.get_clock().now().to_msg()
-                goal_pose.pose.position.x = wp['x']
-                goal_pose.pose.position.y = wp['y']
-                goal_pose.pose.orientation.w = 1.0 # face foward
+        self.navigator.goToPose(goal_pose)
+        self.state = PatrolState.NAVIGATING
 
-                # Go to goal
-                self.navigator.goToPose(goal_pose)
+    def start_scanning(self):
+        self.get_logger().info(' Area Reached Scanning 360°')
+        # Spin 360 degrees = 6.28 radians
+        self.navigator.spin(spin_dist=6.28, time_allowance=10) 
+        self.state = PatrolState.SCANNING
 
-                # Wait until robot gets to the point
-                while not self.navigator.isTaskComplete():
-                    feedback = self.navigator.getFeedback()
-                    time.sleep(0.5)
 
+    def fms_loop(self):
+        """
+        Main finite state machine loop
+        """
+        # Robot is moving to a WP
+        if self.state == PatrolState.NAVIGATING:
+            if self.navigator.isTaskComplete():
                 result = self.navigator.getResult()
-                
                 if result == TaskResult.SUCCEEDED:
-                    self.get_logger().info(f'Waypoint {i+1} REACHED!')
-                    time.sleep(1.0) # Wait 1 sec
-                elif result == TaskResult.CANCELED:
-                    self.get_logger().warn('Task was canceled.')
-                    return
-                elif result == TaskResult.FAILED:
-                    self.get_logger().error(f'Failed to reach Waypoint {i+1}. Skipping...')
-                    
-            
-            self.get_logger().info('Mission Passed') # Restarting patrol
-            
+                    self.get_logger().info('WP Reached. Initiating Security Scan...')
+                    self.start_scanning()
+                else:
+                    self.get_logger().error('Navigation Failed. Retrying same WP...')
+                    self.start_navigation() # Retry logic
+
+        # Robot is scanning
+        elif self.state == PatrolState.SCANNING:
+            if self.navigator.isTaskComplete():
+                self.get_logger().info('Scan Complete. Area Secure.')
+                self.current_wp_index += 1
+                self.start_navigation() # Move to next point
+
 def main(args=None):
-        rclpy.init(args=args)
-        node = SecurityPatrolNode()
-        try:
-            rclpy.spin(node) # For loop
-        except KeyboardInterrupt:
-            pass
-        finally:
-            # Destroy the node
-            node.destroy_node()
-            rclpy.shutdown()
-            
+    rclpy.init(args=args)
+    node = SecurityPatrolNode()
+    try:
+        rclpy.spin(node) 
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
 if __name__ == '__main__':
     main()
         
