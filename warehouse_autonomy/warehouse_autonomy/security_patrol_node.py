@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data # Best practice
+from rclpy.qos import qos_profile_sensor_data 
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from enum import Enum
@@ -37,15 +37,19 @@ class SecurityPatrolNode(Node):
         self.navigator = BasicNavigator()
         
         # Vision setup
+        
         # Bridge object
         self.bridge = CvBridge()
+        
+        # Model loading
+        self.model = YOLO('yolov8n.pt')
         
         # Define subscriber
         self.create_subscription(
             Image,
             '/pi_camera/image_raw',
             self.camera_callback,
-            qos_profile_sensor_data)
+            qos_profile_sensor_data) # Best practice
         self.get_logger().info('Camera online!')
         
         # State machine initialization
@@ -61,10 +65,14 @@ class SecurityPatrolNode(Node):
     def camera_callback(self, msg):
         try:
             # Convert ROS rgb Image to cv bgr image
-            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')        
+            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+            
+            results = self.model(cv_image, verbose=False)
+            
+            annotated_frame = results[0].plot()
             
             # Show image
-            cv2.imshow('Camera Feed', cv_image)
+            cv2.imshow('Camera Feed', annotated_frame)
             cv2.waitKey(1)
         except Exception as e:
             self.get_logger().error(f"Error: {e} ")
