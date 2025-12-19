@@ -1,8 +1,14 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data # Best practice
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from enum import Enum
+
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
+from ultralytics import YOLO
 
 # Defining states
 class PatrolState(Enum):
@@ -14,17 +20,13 @@ class SecurityPatrolNode(Node):
     def __init__(self):
         super().__init__('security_patrol_node')
         
-        # Define params
+        # Config
         self.declare_parameter('waypoint__x', [0.0])
         self.declare_parameter('waypoint__y', [0.0])
         
-        self.get_logger().info('Initializing security patrol node.')
-        
-        # Read params from yaml file
         wp_x = self.get_parameter('waypoint__x').get_parameter_value().double_array_value
         wp_y = self.get_parameter('waypoint__y').get_parameter_value().double_array_value
         
-        # x =[1, 2] --> [{'x':1}] transfrom
         if len(wp_x) != len(wp_y):
             self.get_logger().error('x and y cords list must have the same lenght')
             self.waypoints = []
@@ -33,36 +35,43 @@ class SecurityPatrolNode(Node):
             #self.get_logger().info(f'{len(self.waypoints)} waypoints from config.')
             
         self.navigator = BasicNavigator()
-        # self.setup_initial_pose() # Assume initial pose is already set by Rviz/Sim startup if needed remove the '#'
+        
+        # Vision setup
+        # Bridge object
+        self.bridge = CvBridge()
+        
+        # Define subscriber
+        self.create_subscription(
+            Image,
+            '/pi_camera/image_raw',
+            self.camera_callback,
+            qos_profile_sensor_data)
+        self.get_logger().info('Camera online!')
         
         # State machine initialization
         self.state = PatrolState.IDLE
         self.current_wp_index = 0
         
-        # Check every 0.5 sec
         self.timer = self.create_timer(0.5, self.fms_loop)
         self.get_logger().info('Patrol system ready...')
         
-        # Starting navigation
+        # Trigger first move
         self.start_navigation()
 
-    """
-    def setup_initial_pose(self):
-        initial_pose = PoseStamped()
-        initial_pose.header.frame_id = 'map'
-        initial_pose.header.stamp = self.navigator.get_clock().now().to_msg()
-        initial_pose.pose.position.x = -5.69 
-        initial_pose.pose.position.y = 9.32
-        initial_pose.pose.orientation.z = 0.006
-        initial_pose.pose.orientation.w = 1.0 
-        
-        self.navigator.setInitialPose(initial_pose)
-        self.navigator.waitUntilNav2Active()
-    """
-
+    def camera_callback(self, msg):
+        try:
+            # Convert ROS rgb Image to cv bgr image
+            cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')        
+            
+            # Show image
+            cv2.imshow('Camera Feed', cv_image)
+            cv2.waitKey(1)
+        except Exception as e:
+            self.get_logger().error(f"Error: {e} ")
+            
     def start_navigation(self):
         '''
-        Runs every 0.5 seconds
+        Sends goal to Nav2 and updates state
 
         '''
         if self.current_wp_index >= len(self.waypoints):
@@ -80,18 +89,20 @@ class SecurityPatrolNode(Node):
         goal_pose.pose.orientation.w = 1.0 
 
         self.navigator.goToPose(goal_pose)
+        # State update
         self.state = PatrolState.NAVIGATING
 
     def start_scanning(self):
         self.get_logger().info(' Area Reached Scanning 360°')
         # Spin 360 degrees = 6.28 radians
         self.navigator.spin(spin_dist=6.28, time_allowance=10) 
+        # State update
         self.state = PatrolState.SCANNING
-
 
     def fms_loop(self):
         """
         Main finite state machine loop
+        Checks status every 0.5s and decide next step
         """
         # Robot is moving to a WP
         if self.state == PatrolState.NAVIGATING:
@@ -99,7 +110,7 @@ class SecurityPatrolNode(Node):
                 result = self.navigator.getResult()
                 if result == TaskResult.SUCCEEDED:
                     self.get_logger().info('WP Reached. Initiating Security Scan...')
-                    self.start_scanning()
+                    self.start_scanning() # Navigation done switch scanning
                 else:
                     self.get_logger().error('Navigation Failed. Retrying same WP...')
                     self.start_navigation() # Retry logic
@@ -119,6 +130,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        cv2.destroyAllWindows()
         node.destroy_node()
         rclpy.shutdown()
 
