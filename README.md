@@ -2,19 +2,26 @@
 
 # Warehouse Bot Core - Autonomous Mobile Robot (AMR)
 
-![ROS2 Humble](https://img.shields.io/badge/ROS2-Humble-blue) ![Python](https://img.shields.io/badge/Python-3.10-yellow) ![Gazebo](https://img.shields.io/badge/Simulation-Gazebo-orange) ![Nav2](https://img.shields.io/badge/Navigation-Nav2-green)
+![ROS2 Humble](https://img.shields.io/badge/ROS2-Humble-blue) ![Python](https://img.shields.io/badge/Python-3.10-yellow) ![Gazebo](https://img.shields.io/badge/Simulation-Gazebo-orange) ![Nav2](https://img.shields.io/badge/Navigation-Nav2-green) ![OpenCV](https://img.shields.io/badge/Vision-OpenCV-red) ![YOLOv8](https://img.shields.io/badge/AI-YOLOv8-purple)
 
 **Warehouse Bot Core** is a scalable and modular autonomous robot software architecture designed for industrial warehouse logistics.
 
-The current phase of the project (**Phase 1**) focuses on continuous patrol, autonomous mapping, and localization capabilities in dynamic warehouse environments. The system is built on **ROS 2 Humble** using the **Nav2** stack and is managed by a deterministic State Machine.
+The current phase of the project (**Phase 1.5**) integrates **Deep Learning-based Perception (YOLOv8)** with continuous patrol capabilities. The system is built on **ROS 2 Humble**, utilizing the **Nav2** stack for mobility and a deterministic **Finite State Machine (FSM)** for mission management.
 
 <table style="width:100%">
   <tr>
-    <th width="50%">Simulation Environment (Gazebo)</th>
+    <th width="25%">Phase 1: Navigation  </th>
   </tr>
   <tr>
     <td><img src="/docs/phase1.gif" width="100%"></td>
   </tr>
+  <tr>
+    <th width="%25">Phase 1.5: Vision & Scan Beavior </th>
+  </tr>
+  <tr>
+    <td><img src="/docs/phase1_5.gif" width="100%"></td>
+  </tr>
+  
 </table>
 
 ## System Architecture
@@ -46,14 +53,36 @@ The robot's patrol route is completely decoupled from the source code. Coordinat
 * **Config Path:** `src/warehouse_autonomy/config/patrol_config.yaml`
 * **Structure:**
     ```yaml
-    security_patrol_node:
+    /security_patrol_node:
       ros__parameters:
         waypoint__x: [1.45, -3.50, 5.63]
         waypoint__y: [6.64, -2.88, 2.07]
     ```
 
-### 3. System Orchestration
-All subsystems (Simulation, Navigation, Autonomy) are consolidated under a single `LaunchDescription`. A daisy-chain startup sequence is created using `TimerAction` to balance the processor load.
+### 3. Perception Pipeline (YOLOv8 Integration)
+The robot is equipped with a "Semantic Understanding" layer to detect objects in the warehouse environment.
+
+* **Pipeline Architecture:** `Gazebo (Sim)` -> `sensor_msgs/Image` -> `cv_bridge` -> `OpenCV Matrix` -> `YOLOv8 Inference` -> `Annotated Frame`
+* **Zero-Latency Bridge:** The integration uses an asynchronous subscriber with `SensorDataQoS` (Best Effort reliability) to ensure high-bandwidth video streaming without blocking the navigation stack.
+* **Object Detection:** Currently utilizes the `yolov8n` (Nano) model for real-time inference on CPU.
+
+### 4. Finite State Machine (FSM)
+Unlike simple loops, the robot's behavior is governed by a robust FSM loop running at 2Hz. This prevents "Command Spamming" to the navigation stack and allows for interruptible behaviors.
+
+**States:**
+1.  **IDLE:** Waiting for initialization.
+2.  **NAVIGATING:** Moving to the next waypoint (Async Action Client).
+3.  **SCANNING:** Rotating 360° to inspect the area (Behavior Tree Spin).
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> NAVIGATING : Start Mission
+    NAVIGATING --> SCANNING : Waypoint Reached
+    NAVIGATING --> NAVIGATING : Retry (If Failed)
+    SCANNING --> NAVIGATING : Scan Complete (Next WP)
+    NAVIGATING --> [*] : All Waypoints Done
+```
 
 ## 📥 Installation
 
@@ -63,23 +92,6 @@ The following system requirements must be met to run the project:
 * **Middleware:** ROS 2 Humble Hawksbill
 * **Simulation:** Gazebo Classic
 * **Language:** Python 3.10+
-
-## Appendix: Sequential Logic Flow
-The current security patrol (Phase 1) uses a sequential state logic as shown below:
-
-```mermaid
-graph TD
-    A[Start Node] -->|Load Config| B(Read YAML Params)
-    B --> C{AMCL Ready?}
-    C -- No --> D[Wait for Subscriber]
-    C -- Yes --> E[Broadcast Initial Pose]
-    E --> F[Activate Nav2 Lifecycle]
-    F --> G[Loop Through Waypoints]
-    G --> H{Task Complete?}
-    H -- Yes --> I[Wait & Proceed]
-    H -- No --> J[Recovery / Skip]
-    I --> G
-```
 
 ### Clone Repository
 Navigate to the `src` directory of your workspace and clone the project:
@@ -94,14 +106,15 @@ git clone [https://github.com/mertaren/warehouse_bot_core.git](https://github.co
 
 ```bash
 cd ~/robot_ws
+# Install ROS dependencies
 rosdep install --from-paths src --ignore-src -r -y
+# Install AI/Cv dependencies
+pip install ultralytics opencv-python
 ```
 
 ### Part 2: Build Instructions
 
 ```markdown
-
-## Build Instructions
 Use the `colcon` tool to build the project. Symlink installation allows changes in Python files to take effect without recompiling.
 ```
 
@@ -128,19 +141,22 @@ ros2 launch warehouse_autonomy start_all.launch.py
 
 ## Roadmap
 
-- [x] **Phase 1: Navigation & Patrol Logic** (Current)
-  - Master Launch file implementation.
-  - Robust AMCL initialization.
-  - YAML-based dynamic configuration.
+## Roadmap
+
+- [x] **Phase 1: Navigation & Architecture**
+  - Master Launch file & Robust AMCL initialization.
+  - YAML based dynamic configuration.
+  - Finite State Machine implementation.
+- [x] **Phase 1.5: Perception Layer**
+  - ROS2 <-> OpenCV Bridge implementation.
+  - YOLOv8 Real-time Object Detection integration.
+  - "Scan & Secure" behavior logic.
 - [ ] **Phase 2: Manipulation (MoveIt 2)**
+  - Integration of OpenMANIPULATOR-X URDF.
   - Pick & Place pipeline implementation.
-  - Integration of robotic arm URDF.
-- [ ] **Phase 3: Behavior Trees (Groot)**
-  - Migrating Python logic to XML-based Behavior Trees.
-- [ ] **Phase 4: Enterprise Integration**
+- [ ] **Phase 3: Enterprise Integration**
   - SQL Database connection for inventory tracking.
   - Web Interface for fleet control.
-
 
 ---
 *Maintained by [Mert Aren](https://github.com/mertaren)*
