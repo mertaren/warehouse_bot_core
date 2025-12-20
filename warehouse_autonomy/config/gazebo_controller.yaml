@@ -1,0 +1,44 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000 
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    gripper_controller:
+      type: position_controllers/GripperActionController
+
+arm_controller:
+  ros__parameters:
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+
+gripper_controller:
+  ros__parameters:
+    joint: gripper_left_joint
+    action_monitor_rate: 20.0
+    goal_tolerance: 0.002
+    stall_velocity_threshold: 0.001
+    stall_timeout: 1.0
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["wheel_left_joint"]
+    right_wheel_names: ["wheel_right_joint"]
+    wheel_separation: 0.287
+    wheel_radius: 0.033
+    use_stamped_vel: false
