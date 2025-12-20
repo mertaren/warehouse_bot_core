@@ -10,6 +10,9 @@ controller_manager:
 
     gripper_controller:
       type: position_controllers/GripperActionController
+    
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
 
 arm_controller:
   ros__parameters:

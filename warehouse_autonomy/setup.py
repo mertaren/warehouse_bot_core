@@ -28,7 +28,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'security = warehouse_autonomy.security_patrol_node:main',
+            'security_patrol_node = warehouse_autonomy.security_patrol_node:main',
+            'set_pose = warehouse_autonomy.set_pose:main',
         ],
     },
 )
