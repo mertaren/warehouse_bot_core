@@ -59,7 +59,7 @@ def generate_launch_description():
 
     # MoveIt
     moveit = TimerAction(
-        period=10.0,
+        period=15.0,
         actions=[
             LogInfo(msg="MoveIt Starting.."),
             IncludeLaunchDescription(
@@ -71,7 +71,7 @@ def generate_launch_description():
 
     # Nav2
     navigation = TimerAction(
-        period=20.0,
+        period=30.0,
         actions=[
             LogInfo(msg="Nav2 Starting.."),
             IncludeLaunchDescription(
@@ -83,7 +83,7 @@ def generate_launch_description():
 
     # Initial Pose
     initial_pose = TimerAction(
-        period=30.0,
+        period=45.0,
         actions=[
             LogInfo(msg="Setting Pose.."),
             Node(
@@ -98,7 +98,7 @@ def generate_launch_description():
 
     # Security Patrol 
     patrol = TimerAction(
-        period=40.0,
+        period=60.0,
         actions=[
             LogInfo(msg="Patrol Starting.."),
             Node(
