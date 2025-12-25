@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'security_patrol_node = warehouse_autonomy.security_patrol_node:main',
             'set_pose = warehouse_autonomy.set_pose:main',
+            'pick_and_place = warehouse_autonomy.pick_and_place:main',
         ],
     },
 )

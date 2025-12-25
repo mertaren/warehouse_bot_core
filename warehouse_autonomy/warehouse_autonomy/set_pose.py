@@ -16,15 +16,15 @@ class InitialPosePublisher(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         
        
-        msg.pose.pose.position.x = 0.0
-        msg.pose.pose.position.y = 0.0
+        msg.pose.pose.position.x = 0.0499706
+        msg.pose.pose.position.y = -0.183695
         msg.pose.pose.position.z = 0.0
         
         
         msg.pose.pose.orientation.x = 0.0
         msg.pose.pose.orientation.y = 0.0
-        msg.pose.pose.orientation.z = 0.0
-        msg.pose.pose.orientation.w = 1.0
+        msg.pose.pose.orientation.z = -0.00271926
+        msg.pose.pose.orientation.w = 0.999996
 
         # Covariance matris
         msg.pose.covariance = [
